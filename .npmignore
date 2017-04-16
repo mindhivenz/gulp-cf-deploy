@@ -1,0 +1,7 @@
+.idea
+*.iml
+.eslintrc*
+*.png
+wallaby.js
+src/
+.babelrc

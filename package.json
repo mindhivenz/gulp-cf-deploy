@@ -1,0 +1,43 @@
+{
+  "name": "gulp-cf-deploy",
+  "version": "1.0.0",
+  "description": "Gulp plugin for deploying AWS CloudFormation stacks",
+  "main": "dist/deploy.js",
+  "scripts": {
+    "lint": "eslint src",
+    "build": "babel src --ignore *.spec.js --out-dir dist",
+    "build:clean": "rm -r dist/*",
+    "prepublish": "npm run build"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.41.0",
+    "babel-runtime": "^6.18.0",
+    "gulp-util": "^3.0.8",
+    "lodash": "^4.17.4",
+    "through2": "^2.0.3"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.18.0",
+    "babel-plugin-transform-object-rest-spread": "^6.23.0",
+    "babel-plugin-transform-runtime": "^6.15.0",
+    "babel-preset-env": "^1.2.1",
+    "eslint": "^3.13.1",
+    "eslint-config-mindhive": "^1.1.0"
+  },
+  "author": "Brian Neisler <me@brianneisler.com>",
+  "homepage": "https://github.com/mindhivenz/gulp-cfn-stack",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mindhivenz/gulp-cfn-stack.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mindhivenz/gulp-cfn-stack/issues"
+  },
+  "license": "MIT",
+  "keywords": [
+    "gulp",
+    "cloudformation",
+    "aws"
+  ],
+  "engines" : { "node" : ">=4" }
+}
