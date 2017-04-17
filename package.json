@@ -1,6 +1,6 @@
 {
   "name": "gulp-cf-deploy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Gulp plugin for deploying AWS CloudFormation stacks",
   "main": "dist/deploy.js",
   "scripts": {
@@ -39,5 +39,7 @@
     "cloudformation",
     "aws"
   ],
-  "engines" : { "node" : ">=4" }
+  "engines": {
+    "node": ">=4"
+  }
 }
