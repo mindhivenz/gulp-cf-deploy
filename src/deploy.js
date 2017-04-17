@@ -40,14 +40,14 @@ const simplifiedOutput = state =>
 
 
 export default (
-  serviceOptions,
+  serviceOptions = {},
   stackNameOrOptions,
   parameters = {},
 ) =>
   through2.obj(async (file, enc, done) => {
     const stackOptions = typeof stackNameOrOptions === 'string' ?
       { StackName: stackNameOrOptions }
-      : stackNameOrOptions
+      : (stackNameOrOptions || {})
 
     const deploy = async () => {
       if (file.isNull()) {
@@ -159,9 +159,8 @@ export default (
       }
       const output = simplifiedOutput(resultState)
       const outputFile = file.clone({ contents: false })
-      outputFile.contents = new Buffer(JSON.stringify(output), 'utf8')
+      outputFile.contents = new Buffer(JSON.stringify(output, null, 2), 'utf8')
       outputFile.data = output
-      outputFile.stem += '.outputs'
       outputFile.extname = 'json'
       return outputFile
     }
