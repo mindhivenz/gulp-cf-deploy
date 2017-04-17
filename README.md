@@ -126,7 +126,7 @@ gulp.task('deploy:aws', () => {
   const cfOutput = gulp.src('deploy/resources.yaml')
     .pipe(cfDeploy(
       {
-        ...new AWS.Config(),  // Get credentials from standard places
+        credentials: new AWS.Config().credentials,
         region,
       },
       {
