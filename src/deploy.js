@@ -6,6 +6,7 @@ import toPairs from 'lodash/toPairs'
 import takeWhile from 'lodash/takeWhile'
 import startsWith from 'lodash/startsWith'
 import endsWith from 'lodash/endsWith'
+import includes from 'lodash/includes'
 
 /* eslint-disable no-await-in-loop */
 
@@ -15,14 +16,28 @@ class Err extends PluginError {
   }
 }
 
-const isCompleted = state => ! endsWith(state.StackStatus, '_IN_PROGRESS')
+const isInProgress = state =>
+  endsWith(state.StackStatus, '_IN_PROGRESS')
 
-// TODO: show good errors
-// TODO: document shorthand of just stack name
-// TODO: document parameters
-// TODO: document delete on failure for create
-// TODO: document return json (changed file extension) and data
-// TODO: document examples of omitting secrets and splitting
+const isCleanupInProgress = state =>
+  endsWith(state.StackStatus, '_CLEANUP_IN_PROGRESS')
+
+const isInitialStackEvent = (event, StackId) =>
+  event.PhysicalResourceId === StackId &&
+  ['CREATE_IN_PROGRESS', 'UPDATE_IN_PROGRESS'].some(s => s === event.ResourceStatus)
+
+const isFailedStackEvent = event =>
+  endsWith(event.ResourceStatus, 'FAILED')
+
+const stackStateIndicatesFailure = state =>
+  ['ROLLBACK', 'DELETE', 'FAILED'].some(s => includes(state.StackStatus, s))
+
+const isDeployComplete = state =>
+  ['CREATE_COMPLETE', 'UPDATE_COMPLETE'].some(s => startsWith(state.StackStatus, s))
+
+const simplifiedOutput = state =>
+  fromPairs(state.Outputs.map(({ OutputKey, OutputValue }) => [OutputKey, OutputValue]))
+
 
 export default (
   serviceOptions,
@@ -49,15 +64,9 @@ export default (
 
       const logFailures = async ({ StackId }) => {
         const eventsResult = await cfn.describeStackEvents({ StackName: StackId }).promise()
-        takeWhile(
-          eventsResult.StackEvents,
-          e => ! (
-            e.PhysicalResourceId === StackId &&
-            (e.ResourceStatus === 'CREATE_IN_PROGRESS' || e.ResourceStatus === 'UPDATE_IN_PROGRESS')
-          )
-        )
-          .filter(e => endsWith(e.ResourceStatus, 'FAILED'))
-          .reverse()
+        takeWhile(eventsResult.StackEvents, e => ! isInitialStackEvent(e, StackId))
+          .filter(e => isFailedStackEvent(e))
+          .reverse()  // Change to chronological order
           .forEach(e => log(
             `${StackName}.${e.LogicalResourceId}:`,
             colors.dim(`(${e.ResourceType})`),
@@ -69,18 +78,19 @@ export default (
         )
       }
 
-      const completedState = async ({ StackId, reportFailures }) => {
+      const completedState = async ({ StackId, reportFailures, waitForCleanup }) => {
         let haveReportedFailures = false
         let state
         let delaySeconds = 2
         for (;;) {
           const describeResult = await cfn.describeStacks({ StackName: StackId }).promise()
           state = describeResult.Stacks[0]
-          const completed = isCompleted(state)
-          const status = state.StackStatus
-          log(`${StackName}: ${status}`, completed ? '' : colors.dim(`checking again in ${delaySeconds}s...`))
-          if (reportFailures && ! haveReportedFailures &&
-              (startsWith(status, 'ROLLBACK') || startsWith(status, 'DELETE'))) {
+          const completed = ! isInProgress(state) || (! waitForCleanup && isCleanupInProgress(state))
+          log(
+            `${StackName}: ${state.StackStatus}`,
+            completed ? '' : colors.dim(`checking again in ${delaySeconds}s...`),
+          )
+          if (reportFailures && ! haveReportedFailures && stackStateIndicatesFailure(state)) {
             logFailures({ StackId })
             haveReportedFailures = true
           }
@@ -102,9 +112,13 @@ export default (
         }
       }
       if (initialState) {
-        if (! isCompleted(initialState)) {
+        if (isInProgress(initialState)) {
           log(`${StackName}: waiting for previous operation to complete`)
-          initialState = await completedState({ StackId: initialState.StackId })
+          initialState = await completedState({
+            StackId: initialState.StackId,
+            reportFailures: false,
+            waitForCleanup: true,
+          })
           log(`${StackName}: starting deployment`)
         }
       } else {
@@ -112,7 +126,7 @@ export default (
       }
       const updating = initialState != null
       const deployParams = {
-        ...(updating ? {} : { OnFailure: 'DELETE' }),
+        ...(updating ? {} : { OnFailure: 'DELETE' }),  // Put this first so
         ...stackOptions,
         Parameters: [
           ...(stackOptions.Parameters || []),
@@ -127,7 +141,11 @@ export default (
       let resultState
       try {
         const deployResult = await cfn[updating ? 'updateStack' : 'createStack'](deployParams).promise()
-        resultState = await completedState({ StackId: deployResult.StackId, reportFailures: true })
+        resultState = await completedState({
+          StackId: deployResult.StackId,
+          reportFailures: true,
+          waitForCleanup: false,
+        })
       } catch (e) {
         if (updating && e.code === 'ValidationError' && e.message === 'No updates are to be performed.') {
           // CloudFormation will only update if *resources* will change, for example: changes to Outputs don't count
@@ -136,10 +154,10 @@ export default (
           throw e
         }
       }
-      if (resultState.StackStatus !== 'UPDATE_COMPLETE' && resultState.StackStatus !== 'CREATE_COMPLETE') {
+      if (! isDeployComplete(resultState)) {
         throw new Err(`Deploying ${StackName} failed (${resultState.StackStatusReason || resultState.StackStatus})`)
       }
-      const output = fromPairs(resultState.Outputs.map(({ OutputKey, OutputValue }) => [OutputKey, OutputValue]))
+      const output = simplifiedOutput(resultState)
       const outputFile = file.clone({ contents: false })
       outputFile.contents = new Buffer(JSON.stringify(output), 'utf8')
       outputFile.data = output
