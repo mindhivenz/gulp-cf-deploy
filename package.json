@@ -24,14 +24,14 @@
     "eslint": "^3.13.1",
     "eslint-config-mindhive": "^1.1.0"
   },
-  "author": "Brian Neisler <me@brianneisler.com>",
-  "homepage": "https://github.com/mindhivenz/gulp-cfn-stack",
+  "author": "Damon Maria <damon@mindhive.co.nz>",
+  "homepage": "https://github.com/mindhivenz/gulp-cf-deploy",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mindhivenz/gulp-cfn-stack.git"
+    "url": "https://github.com/mindhivenz/gulp-cf-deploy.git"
   },
   "bugs": {
-    "url": "https://github.com/mindhivenz/gulp-cfn-stack/issues"
+    "url": "https://github.com/mindhivenz/gulp-cf-deploy/issues"
   },
   "license": "MIT",
   "keywords": [
