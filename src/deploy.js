@@ -69,7 +69,7 @@ export default (
           .reverse()  // Change to chronological order
           .forEach(e => log(
             `${StackName}.${e.LogicalResourceId}:`,
-            colors.dim(`(${e.ResourceType})`),
+            colors.dim(`(${e.StackStatus})`),
             colors.red(e.ResourceStatusReason || e.ResourceStatus),
           ))
         log(
@@ -155,6 +155,9 @@ export default (
         }
       }
       if (! isDeployComplete(resultState)) {
+        if (endsWith(resultState.StackStatus, '_FAILED')) {
+          await logFailures({ StackId: resultState.StackId })
+        }
         throw new Err(`Deploying ${StackName} failed (${resultState.StackStatusReason || resultState.StackStatus})`)
       }
       const output = simplifiedOutput(resultState)
