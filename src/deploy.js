@@ -69,7 +69,7 @@ export default (
           .reverse()  // Change to chronological order
           .forEach(e => log(
             `${StackName}.${e.LogicalResourceId}:`,
-            colors.dim(`(${e.StackStatus})`),
+            colors.dim(`(${e.ResourceStatus})`),
             colors.red(e.ResourceStatusReason || e.ResourceStatus),
           ))
         log(
