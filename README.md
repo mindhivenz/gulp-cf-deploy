@@ -58,7 +58,9 @@ In addition:
 - `Parameters`: will be supplemented with the 3rd argument `parameters` 
 - `TemplateBody`: is pulled from the source file's content
 - `OnFailure`: set to `DELETE` when creating a stack, otherwise the stack needs to be manually deleted to try again 
-	(even when deleted the stack can be inspected in the AWS Console for 30 days)   
+	(even when deleted the stack can be inspected in the AWS Console for 30 days)
+- `Capabilities`: Needs to be set if creating IAM resources, see the 
+	[SDK docs](https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/CloudFormation.html#createStack-property).	   
 
 `parameters`: a hash / plain object of parameters that is merged into `Parameters` (if any) of `stackNameOrOptions`.
 	For example: `{ Foo: 123, ... }` becomes `[{ ParameterKey: 'Foo', ParameterValue: 123 }, ...]`	  
