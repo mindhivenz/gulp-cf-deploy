@@ -9,8 +9,9 @@ The headline benefit over other packages is the surfacing of stack errors:
 
 Other benefits:
 
+- Lists resources created / updated / deleted   
 - Errors are displayed ASAP, so you can get to fixing them while the rollback completes
-- A URL is provided direct to the stack details in the AWS console
+- On failure a URL is provided direct to the stack details in the AWS console for full details 
 - Parameters can be passed as a hash / plain object (rather than in CloudFormation's verbose format)
 - Waits for the stack to be deployed before finishing, so tasks in series can rely on the resources being available
 - But does not wait for cleanup of old resources, which should not impact following tasks 

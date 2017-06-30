@@ -8,7 +8,6 @@ import startsWith from 'lodash/startsWith'
 import endsWith from 'lodash/endsWith'
 import includes from 'lodash/includes'
 
-/* eslint-disable no-await-in-loop */
 
 class Err extends PluginError {
   constructor(message) {
@@ -62,41 +61,64 @@ export default (
         ...serviceOptions,
       })
 
-      const logFailures = async ({ StackId }) => {
+      const retrieveStackEvents = async ({ StackId }) => {
         const eventsResult = await cfn.describeStackEvents({ StackName: StackId }).promise()
-        takeWhile(eventsResult.StackEvents, e => ! isInitialStackEvent(e, StackId))
-          .filter(e => isFailedStackEvent(e))
+        return takeWhile(eventsResult.StackEvents, e => ! isInitialStackEvent(e, StackId))
           .reverse()  // Change to chronological order
+      }
+
+      const logFailures = (stackEvents) => {
+        stackEvents
+          .filter(e => isFailedStackEvent(e))
           .forEach(e => log(
             `${StackName}.${e.LogicalResourceId}:`,
             colors.dim(`(${e.ResourceStatus})`),
             colors.red(e.ResourceStatusReason || e.ResourceStatus),
           ))
-        log(
-          'See full details at:',
-          colors.blue.underline(`https://${serviceOptions.region}.console.aws.amazon.com/cloudformation/home?region=${serviceOptions.region}#/stack/detail?stackId=${encodeURIComponent(StackId)}`),
-        )
       }
 
-      const completedState = async ({ StackId, reportFailures, waitForCleanup }) => {
+      const completedState = async ({ StackId, reportEvents, waitForCleanup }) => {
         let haveReportedFailures = false
+        const reportedLogicalIds = []
         let state
         let delaySeconds = 2
         for (;;) {
           const describeResult = await cfn.describeStacks({ StackName: StackId }).promise()
           state = describeResult.Stacks[0]
           const completed = ! isInProgress(state) || (! waitForCleanup && isCleanupInProgress(state))
-          log(
-            `${StackName}: ${state.StackStatus}`,
-            completed ? '' : colors.dim(`checking again in ${delaySeconds}s...`),
-          )
-          if (reportFailures && ! haveReportedFailures && stackStateIndicatesFailure(state)) {
-            logFailures({ StackId })
-            haveReportedFailures = true
+          if (reportEvents) {
+            const stackEvents = await retrieveStackEvents({ StackId })
+            stackEvents
+              .filter(e => e.LogicalResourceId && e.PhysicalResourceId !== StackId)
+              .forEach((e) => {
+                if (! includes(reportedLogicalIds, e.LogicalResourceId)) {
+                  const prefix = `${StackName}.${e.LogicalResourceId}`
+                  if (startsWith(e.ResourceStatus, 'CREATE')) {
+                    log(`${prefix}: ${colors.green('✔ create')}`)
+                  } else if (startsWith(e.ResourceStatus, 'UPDATE')) {
+                    log(`${prefix}: ✱ update`)
+                  } else if (startsWith(e.ResourceStatus, 'DELETE')) {
+                    log(`${prefix}: ${colors.dim('✘ delete')}`)
+                  }
+                  reportedLogicalIds.push(e.LogicalResourceId)
+                }
+              })
+            if (! haveReportedFailures && stackStateIndicatesFailure(state)) {
+              logFailures(stackEvents)
+              log(
+                'See full details at:',
+                colors.blue.underline(`https://${serviceOptions.region}.console.aws.amazon.com/cloudformation/home?region=${serviceOptions.region}#/stack/detail?stackId=${encodeURIComponent(StackId)}`),
+              )
+              haveReportedFailures = true
+            }
           }
           if (completed) {
             return state
           }
+          log(
+            `${StackName}: ${state.StackStatus}`,
+            completed ? '' : colors.dim(`checking again in ${delaySeconds}s...`),
+          )
           await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000))  // eslint-disable-line
           delaySeconds = Math.min(delaySeconds * 2, 60)
         }
@@ -116,7 +138,7 @@ export default (
           log(`${StackName}: waiting for previous operation to complete`)
           initialState = await completedState({
             StackId: initialState.StackId,
-            reportFailures: false,
+            reportEvents: false,
             waitForCleanup: true,
           })
           log(`${StackName}: starting deployment`)
@@ -126,7 +148,7 @@ export default (
       }
       const updating = initialState != null
       const deployParams = {
-        ...(updating ? {} : { OnFailure: 'DELETE' }),  // Put this first so
+        ...(updating ? {} : { OnFailure: 'DELETE' }),  // Put this first so can be overridden by passed params
         ...stackOptions,
         Parameters: [
           ...(stackOptions.Parameters || []),
@@ -143,7 +165,7 @@ export default (
         const deployResult = await cfn[updating ? 'updateStack' : 'createStack'](deployParams).promise()
         resultState = await completedState({
           StackId: deployResult.StackId,
-          reportFailures: true,
+          reportEvents: true,
           waitForCleanup: false,
         })
       } catch (e) {
@@ -156,7 +178,7 @@ export default (
       }
       if (! isDeployComplete(resultState)) {
         if (endsWith(resultState.StackStatus, '_FAILED')) {
-          await logFailures({ StackId: resultState.StackId })
+          logFailures(await retrieveStackEvents({ StackId: resultState.StackId }))
         }
         throw new Err(`Deploying ${StackName} failed (${resultState.StackStatusReason || resultState.StackStatus})`)
       }
