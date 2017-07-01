@@ -94,11 +94,11 @@ export default (
                 if (! includes(reportedLogicalIds, e.LogicalResourceId)) {
                   const prefix = `${StackName}.${e.LogicalResourceId}`
                   if (startsWith(e.ResourceStatus, 'CREATE')) {
-                    log(`${prefix}: ${colors.green('✔ create')}`)
+                    log(`${prefix}: ${colors.green('✔ creating')}`)
                   } else if (startsWith(e.ResourceStatus, 'UPDATE')) {
-                    log(`${prefix}: ✱ update`)
+                    log(`${prefix}: ✱ updating`)
                   } else if (startsWith(e.ResourceStatus, 'DELETE')) {
-                    log(`${prefix}: ${colors.dim('✘ delete')}`)
+                    log(`${prefix}: ${colors.dim('✘ deleting')}`)
                   }
                   reportedLogicalIds.push(e.LogicalResourceId)
                 }
