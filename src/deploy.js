@@ -112,13 +112,13 @@ export default (
               haveReportedFailures = true
             }
           }
-          if (completed) {
-            return state
-          }
           log(
             `${StackName}: ${state.StackStatus}`,
             completed ? '' : colors.dim(`checking again in ${delaySeconds}s...`),
           )
+          if (completed) {
+            return state
+          }
           await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000))  // eslint-disable-line
           delaySeconds = Math.min(delaySeconds * 2, 60)
         }
