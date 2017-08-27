@@ -32,7 +32,7 @@ const stackStateIndicatesFailure = state =>
   ['ROLLBACK', 'DELETE', 'FAILED'].some(s => includes(state.StackStatus, s))
 
 const isDeployComplete = state =>
-  ['CREATE_COMPLETE', 'UPDATE_COMPLETE'].some(s => startsWith(state.StackStatus, s))
+  endsWith(state.StackStatus, '_COMPLETE') && ['CREATE_', 'UPDATE_'].some(s => startsWith(state.StackStatus, s))
 
 const simplifiedOutput = state =>
   fromPairs(state.Outputs.map(({ OutputKey, OutputValue }) => [OutputKey, OutputValue]))
