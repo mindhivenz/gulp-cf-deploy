@@ -22,6 +22,11 @@ Other benefits:
 	to be manually deleted to try again (however, even when the delete has completed the full details of the 
 	failed stack are still available at the console URL)
 
+## Requirements
+
+This packages has a peer dependency on Gulp v4, which you can currently 
+install as `gulp@next`.
+
 ## Install
 
 `yarn add --dev gulp-cf-deploy`
