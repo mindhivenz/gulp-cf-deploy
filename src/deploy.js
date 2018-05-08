@@ -111,7 +111,7 @@ export default (
               logFailures(stackEvents)
               log(
                 'See full details at:',
-                colors.blue(colors.underline(`https://${serviceOptions.region}.console.aws.amazon.com/cloudformation/home?region=${serviceOptions.region}#/stack/detail?stackId=${encodeURIComponent(StackId)}`)),
+                colors.blue.underline(`https://${serviceOptions.region}.console.aws.amazon.com/cloudformation/home?region=${serviceOptions.region}#/stack/detail?stackId=${encodeURIComponent(StackId)}`),
               )
               haveReportedFailures = true
             }
