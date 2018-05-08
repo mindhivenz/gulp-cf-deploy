@@ -11,6 +11,8 @@ import endsWith from 'lodash/endsWith'
 import includes from 'lodash/includes'
 
 
+const MAX_REPORT_SECONDS = 15
+
 class Err extends PluginError {
   constructor(message) {
     super('cf-deploy', message, { showProperties: typeof message === 'object' })
@@ -122,7 +124,7 @@ export default (
             return state
           }
           await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000))  // eslint-disable-line
-          delaySeconds = Math.min(delaySeconds * 2, 60)
+          delaySeconds = Math.min(delaySeconds * 2, MAX_REPORT_SECONDS)
         }
       }
 
