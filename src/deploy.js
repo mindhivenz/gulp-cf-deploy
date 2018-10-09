@@ -58,7 +58,9 @@ export default (serviceOptions = {}, stackNameOrOptions, parameters = {}) =>
         return file
       }
       if (!file.isBuffer()) {
-        throw new Err('Can only handle buffered files')
+        throw new Err(
+          'Can only handle buffered files, pipe through vinyl-buffer beforehand',
+        )
       }
       const StackName = stackOptions.StackName || file.stem
       const cfn = new CloudFormation({
