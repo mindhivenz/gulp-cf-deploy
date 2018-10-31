@@ -192,6 +192,7 @@ export default (serviceOptions = {}, stackNameOrOptions, parameters = {}) =>
         TemplateBody: file.contents.toString(enc),
       }
       let resultState
+      let skipped = false
       try {
         const deployResult = await cfn[
           updating ? 'updateStack' : 'createStack'
@@ -209,11 +210,12 @@ export default (serviceOptions = {}, stackNameOrOptions, parameters = {}) =>
         ) {
           // CloudFormation will only update if *resources* will change, for example: changes to Outputs don't count
           resultState = initialState
+          skipped = true
         } else {
           throw e
         }
       }
-      if (!isDeploySuccessful(resultState)) {
+      if (!skipped && !isDeploySuccessful(resultState)) {
         if (endsWith(resultState.StackStatus, '_FAILED')) {
           logFailures(
             await retrieveStackEvents({ StackId: resultState.StackId }),
