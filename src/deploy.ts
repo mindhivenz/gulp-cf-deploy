@@ -1,10 +1,15 @@
-import CloudFormation from 'aws-sdk/clients/cloudformation'
+import CloudFormation, {
+  CreateStackInput,
+  Stack,
+  StackEvent,
+  Types,
+  UpdateStackInput,
+} from 'aws-sdk/clients/cloudformation'
 import through2 from 'through2'
 import PluginError from 'plugin-error'
 import log from 'fancy-log'
 import colors from 'ansi-colors'
 import fromPairs from 'lodash/fromPairs'
-import toPairs from 'lodash/toPairs'
 import takeWhile from 'lodash/takeWhile'
 import startsWith from 'lodash/startsWith'
 import endsWith from 'lodash/endsWith'
@@ -12,110 +17,139 @@ import includes from 'lodash/includes'
 
 const MAX_REPORT_SECONDS = 15
 
-class Err extends PluginError {
-  constructor(message) {
-    super('cf-deploy', message, {
-      showProperties: typeof message === 'object',
-    })
-  }
-}
+const error = (err: string | Error) =>
+  new PluginError('cf-deploy', err, { showProperties: typeof err !== 'string' })
 
-const isInProgress = state => endsWith(state.StackStatus, '_IN_PROGRESS')
+const isInProgress = (state: Stack) =>
+  endsWith(state.StackStatus, '_IN_PROGRESS')
 
-const isCleanupInProgress = state =>
+const isCleanupInProgress = (state: Stack) =>
   endsWith(state.StackStatus, '_CLEANUP_IN_PROGRESS')
 
-const isInitialStackEvent = (event, StackId) =>
+const isInitialStackEvent = (event: StackEvent, StackId: string) =>
   event.PhysicalResourceId === StackId &&
   ['CREATE_IN_PROGRESS', 'UPDATE_IN_PROGRESS'].some(
     s => s === event.ResourceStatus,
   )
 
-const isFailedStackEvent = event => endsWith(event.ResourceStatus, 'FAILED')
+const isFailedStackEvent = (event: StackEvent) =>
+  endsWith(event.ResourceStatus, 'FAILED')
 
-const stackStateIndicatesFailure = state =>
+const stackStateIndicatesFailure = (state: Stack) =>
   ['ROLLBACK', 'DELETE', 'FAILED'].some(s => includes(state.StackStatus, s))
 
-const isDeploySuccessful = state =>
+const isDeploySuccessful = (state: Stack) =>
   includes(state.StackStatus, 'COMPLETE') &&
   !includes(state.StackStatus, 'ROLLBACK') &&
   ['CREATE', 'UPDATE'].some(s => startsWith(state.StackStatus, s))
 
-const simplifiedOutput = state =>
+const simplifiedOutput = (state: Stack) =>
   fromPairs(
-    state.Outputs.map(({ OutputKey, OutputValue }) => [OutputKey, OutputValue]),
+    state.Outputs!.map(({ OutputKey, OutputValue }) => [
+      OutputKey,
+      OutputValue,
+    ]),
   )
 
-export default (serviceOptions = {}, stackNameOrOptions, parameters = {}) =>
-  through2.obj(async (file, enc, done) => {
-    const stackOptions =
-      typeof stackNameOrOptions === 'string'
-        ? { StackName: stackNameOrOptions }
-        : stackNameOrOptions || {}
+interface IServiceOptions extends Types.ClientConfiguration {
+  region: string // We require region
+}
 
+type StackInput = CreateStackInput | UpdateStackInput
+
+// noinspection JSUnusedGlobalSymbols
+export default (
+  serviceOptions: IServiceOptions,
+  stackNameOrOptions: string | StackInput | undefined,
+  parameters: Record<string, string | number> = {},
+) =>
+  through2.obj(async (file, enc, done) => {
     const deploy = async () => {
+      const stackOptions: StackInput =
+        typeof stackNameOrOptions === 'string'
+          ? { StackName: stackNameOrOptions }
+          : typeof stackNameOrOptions === 'undefined'
+          ? { StackName: file.stem }
+          : stackNameOrOptions
+
       if (file.isNull()) {
         return file
       }
       if (!file.isBuffer()) {
-        throw new Err(
+        throw error(
           'Can only handle buffered files, pipe through vinyl-buffer beforehand',
         )
       }
-      const StackName = stackOptions.StackName || file.stem
+      const stackName = stackOptions.StackName
       const cfn = new CloudFormation({
         apiVersion: '2010-05-15',
         ...serviceOptions,
       })
 
-      const retrieveStackEvents = async ({ StackId }) => {
+      const retrieveStackEvents = async (stackId: string) => {
         const eventsResult = await cfn
-          .describeStackEvents({ StackName: StackId })
+          .describeStackEvents({ StackName: stackId })
           .promise()
         return takeWhile(
           eventsResult.StackEvents,
-          e => !isInitialStackEvent(e, StackId),
+          e => !isInitialStackEvent(e, stackId),
         ).reverse() // Change to chronological order
       }
 
-      const logFailures = stackEvents => {
+      const logFailures = (stackEvents: StackEvent[]) => {
         stackEvents
           .filter(e => isFailedStackEvent(e))
           .forEach(e =>
             log(
-              `${StackName}.${e.LogicalResourceId}:`,
+              `${stackName}.${e.LogicalResourceId}:`,
               colors.dim(`(${e.ResourceStatus})`),
-              colors.red(e.ResourceStatusReason || e.ResourceStatus),
+              colors.red(
+                e.ResourceStatusReason || e.ResourceStatus || '<unknown>',
+              ),
             ),
           )
+      }
+
+      const buildParameters = () => {
+        return [
+          ...(stackOptions.Parameters || []),
+          ...Object.entries(parameters).map(([k, v]) => ({
+            ParameterKey: k,
+            ParameterValue: String(v),
+          })),
+        ]
       }
 
       const completedState = async ({
         StackId,
         reportEvents,
         waitForCleanup,
+      }: {
+        StackId: string
+        reportEvents: boolean
+        waitForCleanup: boolean
       }) => {
         let haveReportedFailures = false
-        const reportedLogicalIds = []
+        const reportedLogicalIds: string[] = []
         let state
         let delaySeconds = 2
         for (;;) {
           const describeResult = await cfn
             .describeStacks({ StackName: StackId })
             .promise()
-          state = describeResult.Stacks[0]
+          state = describeResult.Stacks![0]
           const completed =
             !isInProgress(state) ||
             (!waitForCleanup && isCleanupInProgress(state))
           if (reportEvents) {
-            const stackEvents = await retrieveStackEvents({ StackId })
+            const stackEvents = await retrieveStackEvents(StackId)
             stackEvents
               .filter(
                 e => e.LogicalResourceId && e.PhysicalResourceId !== StackId,
               )
               .forEach(e => {
                 if (!includes(reportedLogicalIds, e.LogicalResourceId)) {
-                  const prefix = `${StackName}.${e.LogicalResourceId}`
+                  const prefix = `${stackName}.${e.LogicalResourceId}`
                   if (startsWith(e.ResourceStatus, 'CREATE')) {
                     log(`${prefix}: ${colors.green('✔ creating')}`)
                   } else if (startsWith(e.ResourceStatus, 'UPDATE')) {
@@ -123,7 +157,7 @@ export default (serviceOptions = {}, stackNameOrOptions, parameters = {}) =>
                   } else if (startsWith(e.ResourceStatus, 'DELETE')) {
                     log(`${prefix}: ${colors.dim('✘ deleting')}`)
                   }
-                  reportedLogicalIds.push(e.LogicalResourceId)
+                  reportedLogicalIds.push(e.LogicalResourceId!)
                 }
               })
             if (!haveReportedFailures && stackStateIndicatesFailure(state)) {
@@ -142,7 +176,7 @@ export default (serviceOptions = {}, stackNameOrOptions, parameters = {}) =>
             }
           }
           log(
-            `${StackName}: ${state.StackStatus}`,
+            `${stackName}: ${state.StackStatus}`,
             completed
               ? ''
               : colors.dim(`checking again in ${delaySeconds}s...`),
@@ -155,10 +189,12 @@ export default (serviceOptions = {}, stackNameOrOptions, parameters = {}) =>
         }
       }
 
-      let initialState
+      let initialState: CloudFormation.Stack | undefined
       try {
-        const describeResult = await cfn.describeStacks({ StackName }).promise()
-        initialState = describeResult.Stacks[0]
+        const describeResult = await cfn
+          .describeStacks({ StackName: stackName })
+          .promise()
+        initialState = describeResult.Stacks![0]
       } catch (e) {
         if (e.code !== 'ValidationError') {
           throw e
@@ -166,39 +202,33 @@ export default (serviceOptions = {}, stackNameOrOptions, parameters = {}) =>
       }
       if (initialState) {
         if (isInProgress(initialState)) {
-          log(`${StackName}: waiting for previous operation to complete`)
+          log(`${stackName}: waiting for previous operation to complete`)
           initialState = await completedState({
-            StackId: initialState.StackId,
+            StackId: initialState.StackId!,
             reportEvents: false,
             waitForCleanup: true,
           })
-          log(`${StackName}: starting deployment`)
+          log(`${stackName}: starting deployment`)
         }
       } else {
-        log(`${StackName}: creating new stack`)
+        log(`${stackName}: creating new stack`)
       }
       const updating = initialState != null
-      const deployParams = {
+      const deployParams: StackInput = {
         ...(updating ? {} : { OnFailure: 'DELETE' }), // Put this first so can be overridden by passed params
         ...stackOptions,
-        Parameters: [
-          ...(stackOptions.Parameters || []),
-          ...toPairs(parameters).map(([k, v]) => ({
-            ParameterKey: k,
-            ParameterValue: v,
-          })),
-        ],
-        StackName,
+        Parameters: buildParameters(),
         TemplateBody: file.contents.toString(enc),
       }
       let resultState
       let skipped = false
       try {
-        const deployResult = await cfn[
-          updating ? 'updateStack' : 'createStack'
-        ](deployParams).promise()
+        const request = updating
+          ? cfn.updateStack(deployParams)
+          : cfn.createStack(deployParams)
+        const deployResult = await request.promise()
         resultState = await completedState({
-          StackId: deployResult.StackId,
+          StackId: deployResult.StackId!,
           reportEvents: true,
           waitForCleanup: false,
         })
@@ -209,7 +239,7 @@ export default (serviceOptions = {}, stackNameOrOptions, parameters = {}) =>
           e.message === 'No updates are to be performed.'
         ) {
           // CloudFormation will only update if *resources* will change, for example: changes to Outputs don't count
-          resultState = initialState
+          resultState = initialState! // Must exist since we're updating
           skipped = true
         } else {
           throw e
@@ -217,12 +247,10 @@ export default (serviceOptions = {}, stackNameOrOptions, parameters = {}) =>
       }
       if (!skipped && !isDeploySuccessful(resultState)) {
         if (endsWith(resultState.StackStatus, '_FAILED')) {
-          logFailures(
-            await retrieveStackEvents({ StackId: resultState.StackId }),
-          )
+          logFailures(await retrieveStackEvents(resultState.StackId!))
         }
-        throw new Err(
-          `Deploying ${StackName} failed (${resultState.StackStatusReason ||
+        throw error(
+          `Deploying ${stackName} failed (${resultState.StackStatusReason ||
             resultState.StackStatus})`,
         )
       }
@@ -240,7 +268,7 @@ export default (serviceOptions = {}, stackNameOrOptions, parameters = {}) =>
       if (e instanceof PluginError) {
         done(e)
       } else {
-        done(new Err(e))
+        done(error(e))
       }
     }
   })

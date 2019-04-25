@@ -5,6 +5,8 @@
       <option value="Prettier JS" />
       <option value="Prettier YAML" />
       <option value="Prettier Markdown" />
+      <option value="Prettier TS" />
+      <option value="Prettier JSON" />
     </enabled-global>
   </component>
 </project>

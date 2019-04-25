@@ -1,7 +1,6 @@
+src
 .idea
 *.iml
-.eslintrc*
-*.png
-wallaby.js
-src/
-.babelrc
+tsconfig.json
+gulpfile.ts
+tslint.json
