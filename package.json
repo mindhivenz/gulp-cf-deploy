@@ -3,6 +3,7 @@
   "version": "2.1.0",
   "description": "Gulp plugin for deploying AWS CloudFormation stacks",
   "main": "dist/deploy.js",
+  "typings": "dist/deploy.d.ts",
   "dependencies": {
     "ansi-colors": "^2.0.1",
     "aws-sdk": "^2.41.0",
