@@ -55,6 +55,10 @@ interface IServiceOptions extends Types.ClientConfiguration {
   region: string // We require region
 }
 
+interface ITaskOptions {
+  logPrefix?: string
+}
+
 type StackInput = CreateStackInput | UpdateStackInput
 
 // noinspection JSUnusedGlobalSymbols
@@ -62,6 +66,7 @@ export default (
   serviceOptions: IServiceOptions,
   stackNameOrOptions: string | StackInput | undefined,
   parameters: Record<string, string | number> = {},
+  options: ITaskOptions = {},
 ) =>
   through2.obj(async (file, enc, done) => {
     const deploy = async () => {
@@ -81,6 +86,7 @@ export default (
         )
       }
       const stackName = stackOptions.StackName
+      const logPrefix = options.logPrefix || stackName
       const cfn = new CloudFormation({
         apiVersion: '2010-05-15',
         ...serviceOptions,
@@ -101,7 +107,7 @@ export default (
           .filter(e => isFailedStackEvent(e))
           .forEach(e =>
             log(
-              `${stackName}.${e.LogicalResourceId}:`,
+              `${logPrefix}.${e.LogicalResourceId}:`,
               colors.dim(`(${e.ResourceStatus})`),
               colors.red(
                 e.ResourceStatusReason || e.ResourceStatus || '<unknown>',
@@ -149,7 +155,7 @@ export default (
               )
               .forEach(e => {
                 if (!includes(reportedLogicalIds, e.LogicalResourceId)) {
-                  const prefix = `${stackName}.${e.LogicalResourceId}`
+                  const prefix = `${logPrefix}.${e.LogicalResourceId}`
                   if (startsWith(e.ResourceStatus, 'CREATE')) {
                     log(`${prefix}: ${colors.green('✔ creating')}`)
                   } else if (startsWith(e.ResourceStatus, 'UPDATE')) {
@@ -176,7 +182,7 @@ export default (
             }
           }
           log(
-            `${stackName}: ${state.StackStatus}`,
+            `${logPrefix}: ${state.StackStatus}`,
             completed
               ? ''
               : colors.dim(`checking again in ${delaySeconds}s...`),
@@ -202,16 +208,16 @@ export default (
       }
       if (initialState) {
         if (isInProgress(initialState)) {
-          log(`${stackName}: waiting for previous operation to complete`)
+          log(`${logPrefix}: waiting for previous operation to complete`)
           initialState = await completedState({
             StackId: initialState.StackId!,
             reportEvents: false,
             waitForCleanup: true,
           })
-          log(`${stackName}: starting deployment`)
+          log(`${logPrefix}: starting deployment`)
         }
       } else {
-        log(`${stackName}: creating new stack`)
+        log(`${logPrefix}: creating new stack`)
       }
       const updating = initialState != null
       const deployParams: StackInput = {
