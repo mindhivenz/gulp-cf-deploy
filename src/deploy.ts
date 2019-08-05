@@ -1,5 +1,6 @@
 import CloudFormation, {
   CreateStackInput,
+  Parameters,
   Stack,
   StackEvent,
   Types,
@@ -61,11 +62,17 @@ interface ITaskOptions {
 
 type StackInput = CreateStackInput | UpdateStackInput
 
+export type ParameterValue = string | number
+
+export type HashParameters = Record<string, ParameterValue>
+
+const parameterValue = (param: ParameterValue): string => String(param)
+
 // noinspection JSUnusedGlobalSymbols
 export default (
   serviceOptions: IServiceOptions,
   stackNameOrOptions: string | StackInput | undefined,
-  parameters: Record<string, string | number> = {},
+  parameters: HashParameters = {},
   options: ITaskOptions = {},
 ) =>
   through2.obj(async (file, enc, done) => {
@@ -116,15 +123,13 @@ export default (
           )
       }
 
-      const buildParameters = () => {
-        return [
-          ...(stackOptions.Parameters || []),
-          ...Object.entries(parameters).map(([k, v]) => ({
-            ParameterKey: k,
-            ParameterValue: String(v),
-          })),
-        ]
-      }
+      const buildParameters = (): Parameters => [
+        ...(stackOptions.Parameters || []),
+        ...Object.entries(parameters).map(([k, v]) => ({
+          ParameterKey: k,
+          ParameterValue: parameterValue(v),
+        })),
+      ]
 
       const completedState = async ({
         StackId,
