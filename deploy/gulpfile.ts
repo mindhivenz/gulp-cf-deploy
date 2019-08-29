@@ -1,21 +1,22 @@
 import ensureGitUpToDate from '@mindhive/deploy/ensureGitUpToDate'
-import execFile from '@mindhive/deploy/execFile'
 import yarnPublish from '@mindhive/deploy/yarnPublish'
 import del from 'del'
 import gulp from 'gulp'
+import ts from 'gulp-typescript'
 import path from 'path'
 
 const projectDir = path.dirname(__dirname)
 process.chdir(projectDir)
-const srcDir = `src`
 const distDir = `dist`
+const tsProj = ts.createProject('src/tsconfig.json')
 
 const clean = () => del(distDir)
 
 const build = () =>
-  execFile('tsc', ['--outDir', distDir, '--project', srcDir], {
-    pipeOutput: true,
-  })
+  tsProj
+    .src()
+    .pipe(tsProj())
+    .pipe(gulp.dest(distDir))
 
 export const dist = gulp.series(clean, build)
 
