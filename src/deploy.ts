@@ -1,11 +1,16 @@
-import CloudFormation, {
+import {
+  CloudFormationClient,
+  CloudFormationClientConfig,
+  CreateStackCommand,
   CreateStackInput,
-  Parameters,
+  DescribeStackEventsCommand, 
+  DescribeStacksCommand,
+  Parameter,
   Stack,
   StackEvent,
-  Types,
+  UpdateStackCommand,
   UpdateStackInput,
-} from 'aws-sdk/clients/cloudformation'
+} from '@aws-sdk/client-cloudformation';
 import through2 from 'through2'
 import PluginError from 'plugin-error'
 import log from 'fancy-log'
@@ -52,7 +57,7 @@ const simplifiedOutput = (state: Stack) =>
     ]),
   )
 
-interface IServiceOptions extends Types.ClientConfiguration {
+interface IServiceOptions extends CloudFormationClientConfig {
   region: string // We require region
 }
 
@@ -94,15 +99,15 @@ export default (
       }
       const stackName = stackOptions.StackName
       const logPrefix = options.logPrefix || stackName
-      const cfn = new CloudFormation({
+      const cfn = new CloudFormationClient({
         apiVersion: '2010-05-15',
         ...serviceOptions,
       })
 
       const retrieveStackEvents = async (stackId: string) => {
+        const command = new DescribeStackEventsCommand({ StackName: stackId });
         const eventsResult = await cfn
-          .describeStackEvents({ StackName: stackId })
-          .promise()
+          .send(command)
         return takeWhile(
           eventsResult.StackEvents,
           e => !isInitialStackEvent(e, stackId),
@@ -123,7 +128,7 @@ export default (
           )
       }
 
-      const buildParameters = (): Parameters => [
+      const buildParameters = (): Parameter [] => [
         ...(stackOptions.Parameters || []),
         ...Object.entries(parameters).map(([k, v]) => ({
           ParameterKey: k,
@@ -144,10 +149,10 @@ export default (
         const reportedLogicalIds: string[] = []
         let state
         let delaySeconds = 2
+        const command = new DescribeStacksCommand({ StackName: StackId });
         for (;;) {
           const describeResult = await cfn
-            .describeStacks({ StackName: StackId })
-            .promise()
+            .send(command)
           state = describeResult.Stacks![0]
           const completed =
             !isInProgress(state) ||
@@ -200,11 +205,11 @@ export default (
         }
       }
 
-      let initialState: CloudFormation.Stack | undefined
+      let initialState: Stack | undefined
       try {
+        const command = new DescribeStacksCommand({ StackName: stackName });
         const describeResult = await cfn
-          .describeStacks({ StackName: stackName })
-          .promise()
+          .send(command)
         initialState = describeResult.Stacks![0]
       } catch (e) {
         if (e.code !== 'ValidationError') {
@@ -234,10 +239,8 @@ export default (
       let resultState
       let skipped = false
       try {
-        const request = updating
-          ? cfn.updateStack(deployParams)
-          : cfn.createStack(deployParams)
-        const deployResult = await request.promise()
+        const command = updating ? new UpdateStackCommand(deployParams) : new CreateStackCommand(deployParams)
+        const deployResult = await cfn.send(command)
         resultState = await completedState({
           StackId: deployResult.StackId!,
           reportEvents: true,
