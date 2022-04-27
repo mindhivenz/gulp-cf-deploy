@@ -1,6 +1,6 @@
 {
   "name": "gulp-cf-deploy",
-  "version": "2.2.1",
+  "version": "3.0.0",
   "description": "Gulp plugin for deploying AWS CloudFormation stacks",
   "main": "dist/deploy.js",
   "typings": "dist/deploy.d.ts",
