@@ -1,5 +1,10 @@
 # Changelog
 
+
+## 3.0.0
+
+- Updated peer dependency to aws-sdk version 3.
+
 ## 2.2.0
 
 - Added `taskOptions` as 4th parameter. Allowing setting of `logPrefix` to differentiate

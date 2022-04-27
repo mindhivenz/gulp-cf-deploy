@@ -118,7 +118,6 @@ you secret and access keys separately from other resource information (such as `
 You can handle this as follows:
 
 ```js
-import AWS from 'aws-sdk/global'
 import gulp from 'gulp'
 import clone from 'gulp-clone'
 import filter from 'gulp-filter'
@@ -132,7 +131,6 @@ gulp.task('deploy:aws', () => {
   const cfOutput = gulp.src('deploy/resources.yaml').pipe(
     cfDeploy(
       {
-        credentials: new AWS.Config().credentials,
         region,
       },
       {
